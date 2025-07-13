@@ -23,9 +23,9 @@ class SupplierSerializer(serializers.ModelSerializer):
 
     def validate_gst_number(self, value):
         if value and not re.match(GST_REGEX, value):
-            raise ValidationError({
-                'gst_number': 'Invalid GST format. Expected format: 22AAAAA0000A1Z5'
-            })
+            raise ValidationError(
+                'Invalid GST format. Expected format: 22AAAAA0000A1Z5'
+            )
         return value
 
 class InventorySerializer(serializers.ModelSerializer):
@@ -45,8 +45,55 @@ class InventorySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'name', 'sku', 'quantity', 'price',
             'supplier', 'supplier_name', 'supplier_id',
-            'expiration_date', 'threshold', 'created_at'
+            'expiration_date', 'threshold', 'created_at', 'updated_at'
         ]
+
+    def validate_sku(self, value):
+        """
+        Validate that SKU is unique for the current user only.
+        Different users can have the same SKU.
+        """
+        if not value:
+            raise ValidationError("SKU is required.")
+        
+        # Get the current user from the request context
+        user = self.context['request'].user
+        
+        # Check if this is an update operation
+        if self.instance:
+            # For updates, exclude the current instance from the uniqueness check
+            existing_items = InventoryItem.objects.filter(
+                user=user, 
+                sku=value
+            ).exclude(id=self.instance.id)
+        else:
+            # For new items, check if SKU already exists for this user
+            existing_items = InventoryItem.objects.filter(
+                user=user, 
+                sku=value
+            )
+        
+        if existing_items.exists():
+            raise ValidationError(
+                f"An item with SKU '{value}' already exists in your inventory."
+            )
+        
+        return value
+
+    def validate(self, attrs):
+        """
+        Additional validation at the object level if needed.
+        """
+        # You can add more complex validation here if needed
+        return attrs
+
+    def create(self, validated_data):
+        """
+        Create a new inventory item with the current user.
+        """
+        # Ensure the user is set from the request context
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
 class OrderItemSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.name', read_only=True)
