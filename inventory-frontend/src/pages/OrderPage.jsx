@@ -3,9 +3,14 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Box, Typography, Button, TextField, Paper, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Alert, LinearProgress,
-  Stepper, Step, StepLabel
+  Stepper, Step, StepLabel, FormControlLabel, Switch, Select, MenuItem,
+  InputLabel, FormControl, IconButton, Chip
 } from '@mui/material';
-import { Payment as PaymentIcon } from '@mui/icons-material';
+import { 
+  Payment as PaymentIcon, 
+  Delete as DeleteIcon,
+  Add as AddIcon
+} from '@mui/icons-material';
 import API from "../api/axios";
 
 const steps = ['Delivery', 'Billing', 'Confirmation'];
@@ -15,23 +20,32 @@ export default function OrderPage() {
   const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
   const [deliveryAddress, setDeliveryAddress] = useState({
-    street: "",
-    city: "",
-    state: "",
-    zipCode: "",
-    phone: ""
+    street: "", city: "", state: "", zipCode: "", phone: ""
   });
   const [billingInfo, setBillingInfo] = useState({
-    sameAsDelivery: true,
-    name: "",
-    address: "",
-    taxId: ""
+    sameAsDelivery: true, name: "", address: "", taxId: ""
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [applyDiscount, setApplyDiscount] = useState(false);
+  const [discounts, setDiscounts] = useState([{ type: 'percentage', value: 0, description: '' }]);
 
   const orderedItems = state?.items || [];
-  const totalAmount = orderedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const subtotal = orderedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  
+  const calculateTotal = () => {
+    let total = subtotal;
+    discounts.forEach(discount => {
+      if (discount.type === 'percentage') {
+        total -= total * (discount.value / 100);
+      } else {
+        total -= discount.value;
+      }
+    });
+    return Math.max(0, total);
+  };
+  
+  const totalAmount = calculateTotal();
 
   const handleNext = () => {
     if (activeStep === 0) {
@@ -59,10 +73,29 @@ export default function OrderPage() {
     });
   };
 
+  const handleDiscountChange = (index, field, value) => {
+    const updatedDiscounts = [...discounts];
+    updatedDiscounts[index] = {
+      ...updatedDiscounts[index],
+      [field]: field === 'value' ? parseFloat(value) || 0 : value
+    };
+    setDiscounts(updatedDiscounts);
+  };
+
+  const addDiscount = () => {
+    setDiscounts([...discounts, { type: 'percentage', value: 0, description: '' }]);
+  };
+
+  const removeDiscount = (index) => {
+    const updatedDiscounts = [...discounts];
+    updatedDiscounts.splice(index, 1);
+    setDiscounts(updatedDiscounts);
+  };
+
   const handlePlaceOrder = async () => {
     setLoading(true);
     try {
-      const res = await API.post("/orders/", {
+      const orderData = {
         items: orderedItems.map(item => ({
           id: item.id,
           quantity: item.quantity
@@ -71,13 +104,32 @@ export default function OrderPage() {
         billing_address: billingInfo.sameAsDelivery ? 
           `${deliveryAddress.street}, ${deliveryAddress.city}, ${deliveryAddress.state} ${deliveryAddress.zipCode}` :
           billingInfo.address,
+        subtotal: subtotal,
         total_amount: totalAmount,
-        billing_name: billingInfo.name,
-        tax_id: billingInfo.taxId
+        billing_name: billingInfo.name || deliveryAddress.street,
+        tax_id: billingInfo.taxId,
+        discounts: applyDiscount ? discounts : []
+      };
+
+      const res = await API.post("/orders/", orderData);
+      
+      navigate('/order-success', { 
+        state: { 
+          order: {
+            id: res.data.id,
+            subtotal: subtotal,
+            total_amount: totalAmount,
+            discounts: applyDiscount ? discounts : [],
+            delivery_address: orderData.delivery_address,
+            items: orderedItems,
+            created_at: new Date().toISOString(),
+            status: 'PENDING'
+          }
+        } 
       });
-      navigate("/order-success", { state: res.data });
     } catch (err) {
-      setError("Failed to place order. Please try again.");
+      console.error("Order error:", err);
+      setError(err.response?.data?.message || "Failed to place order. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -238,7 +290,87 @@ export default function OrderPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              
+              <Box sx={styles.discountSection}>
+                <Typography variant="h6" sx={{ mb: 2 }}>Discounts</Typography>
+                
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={applyDiscount}
+                      onChange={(e) => setApplyDiscount(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label="Apply Discounts"
+                  sx={{ mb: 2 }}
+                />
+                
+                {applyDiscount && (
+                  <Box>
+                    {discounts.map((discount, index) => (
+                      <Box key={index} sx={styles.discountRow}>
+                        <FormControl sx={{ minWidth: 120, mr: 2 }} size="small">
+                          <InputLabel>Type</InputLabel>
+                          <Select
+                            value={discount.type}
+                            onChange={(e) => handleDiscountChange(index, 'type', e.target.value)}
+                            label="Type"
+                          >
+                            <MenuItem value="percentage">Percentage</MenuItem>
+                            <MenuItem value="fixed">Fixed Amount</MenuItem>
+                          </Select>
+                        </FormControl>
+                        
+                        <TextField
+                          type="number"
+                          label="Value"
+                          value={discount.value}
+                          onChange={(e) => handleDiscountChange(index, 'value', e.target.value)}
+                          sx={{ width: 120, mr: 2 }}
+                          inputProps={{ min: 0 }}
+                        />
+                        
+                        <TextField
+                          label="Description"
+                          value={discount.description}
+                          onChange={(e) => handleDiscountChange(index, 'description', e.target.value)}
+                          sx={{ flexGrow: 1, mr: 2 }}
+                        />
+                        
+                        <IconButton onClick={() => removeDiscount(index)}>
+                          <DeleteIcon color="error" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                    
+                    <Button 
+                      variant="outlined" 
+                      startIcon={<AddIcon />}
+                      onClick={addDiscount}
+                      sx={{ mt: 1 }}
+                    >
+                      Add Discount
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+              
               <Box sx={styles.summarySection}>
+                <Typography variant="body1" sx={styles.summaryRow}>
+                  Subtotal: ₹{subtotal.toFixed(2)}
+                </Typography>
+                
+                {applyDiscount && discounts.map((discount, index) => (
+                  <Typography key={index} variant="body1" sx={styles.summaryRow}>
+                    Discount {index + 1} ({discount.type === 'percentage' ? `${discount.value}%` : 'Fixed'}): 
+                    -₹{discount.type === 'percentage' 
+                      ? (subtotal * discount.value / 100).toFixed(2) 
+                      : discount.value.toFixed(2)}
+                    {discount.description && ` (${discount.description})`}
+                  </Typography>
+                ))}
+                
                 <Typography variant="h6" sx={styles.total}>
                   Total Amount: ₹{totalAmount.toFixed(2)}
                 </Typography>
@@ -334,13 +466,30 @@ const styles = {
   tableContainer: {
     margin: '16px 0'
   },
+  discountSection: {
+    margin: '16px 0',
+    padding: '16px',
+    backgroundColor: '#f0f7ff',
+    borderRadius: '8px'
+  },
+  discountRow: {
+    display: 'flex',
+    alignItems: 'center',
+    marginBottom: '8px'
+  },
   summarySection: {
     display: 'flex',
-    justifyContent: 'flex-end',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
     marginTop: '16px'
   },
+  summaryRow: {
+    marginBottom: '8px'
+  },
   total: {
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    fontSize: '1.2rem',
+    marginTop: '8px'
   },
   addressSection: {
     margin: '16px 0',

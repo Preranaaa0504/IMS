@@ -3,33 +3,36 @@ import { useNavigate, useParams } from 'react-router-dom';
 import API from '../api/axios';
 import { Box, Typography, TextField, Button, Alert, Snackbar } from '@mui/material';
 
+// Regex for validating Indian GST number format
 const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
 function AddSupplier() {
-  const { id } = useParams();
+  const { id } = useParams(); // Get supplier ID from URL params (for edit mode)
   const [form, setForm] = useState({
     name: '',
     gst_number: '',
     email: '',
     phone: '',
     address: ''
-  });
-  const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [gstError, setGstError] = useState(false);
-  const [authError, setAuthError] = useState(false);
-  const navigate = useNavigate();
+  }); // Form state for supplier fields
 
+  const [errors, setErrors] = useState({});      // Field-level and general errors
+  const [loading, setLoading] = useState(false); // Loading state for submit button
+  const [success, setSuccess] = useState(false); // Success message state
+  const [gstError, setGstError] = useState(false); // GST format error flag
+  const [authError, setAuthError] = useState(false); // Authentication error flag
+  const navigate = useNavigate(); // Navigation hook
+
+  // Fetch supplier data if in edit mode (id exists)
   useEffect(() => {
     if (id) {
       const fetchSupplier = async () => {
         try {
           const response = await API.get(`/suppliers/${id}/`);
-          setForm(response.data);
+          setForm(response.data); // Populate form with fetched data
         } catch (err) {
           if (err.response?.status === 401) {
-            setAuthError(true);
+            setAuthError(true); // Unauthorized: trigger auth error
           } else {
             setErrors({general: 'Failed to load supplier data'});
           }
@@ -39,25 +42,27 @@ function AddSupplier() {
     }
   }, [id]);
 
+  // Handle input changes for all fields
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({
       ...prev,
-      [name]: ['gst_number', 'name'].includes(name) ? value.toUpperCase() : value
+      [name]: ['gst_number', 'name'].includes(name) ? value.toUpperCase() : value // Uppercase for GST and name
     }));
 
-    // Validate GST in real-time
+    // Validate GST in real-time as user types
     if (name === 'gst_number' && value) {
       setGstError(!GST_REGEX.test(value));
     }
   };
 
+  // Handle form submission for add or update
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrors({});
     setLoading(true);
 
-    // Validate required fields
+    // Client-side validation for required fields
     const newErrors = {};
     if (!form.name) newErrors.name = 'Name is required';
     if (!form.address) newErrors.address = 'Address is required';
@@ -69,6 +74,7 @@ function AddSupplier() {
     }
 
     try {
+      // Prepare payload, converting empty optional fields to null
       const payload = {
         name: form.name,
         gst_number: form.gst_number || null,
@@ -78,11 +84,14 @@ function AddSupplier() {
       };
 
       if (id) {
+        // Update existing supplier
         await API.put(`/suppliers/${id}/`, payload);
         setSuccess('Supplier updated successfully!');
       } else {
+        // Create new supplier
         await API.post('/suppliers/', payload);
         setSuccess('Supplier added successfully!');
+        // Reset form fields after adding
         setForm({
           name: '',
           gst_number: '',
@@ -91,20 +100,22 @@ function AddSupplier() {
           address: ''
         });
       }
+      // Redirect to home after a short delay
       setTimeout(() => navigate('/'), 1500);
     } catch (err) {
       if (err.response?.status === 401) {
-        setAuthError(true);
+        setAuthError(true); // Unauthorized: show login prompt
       } else if (err.response?.data) {
-        setErrors(err.response.data);
+        setErrors(err.response.data); // Show API validation errors
       } else {
         setErrors({general: err.message || 'An error occurred'});
       }
     } finally {
-      setLoading(false);
+      setLoading(false); // Reset loading state
     }
   };
 
+  // Handle closing of authentication error snackbar
   const handleCloseAuthError = () => {
     setAuthError(false);
     // Redirect to login or refresh token
@@ -114,17 +125,19 @@ function AddSupplier() {
   return (
     <Box sx={styles.container}>
       <Typography variant="h4" sx={styles.title}>
-        {id ? 'Edit Supplier' : 'Add New Supplier'}
+        {id ? 'Edit Supplier' : 'Add New Supplier'} {/* Show appropriate title */}
       </Typography>
       
+      {/* Show general error or success messages */}
       {errors.general && <Alert severity="error" sx={styles.alert}>{errors.general}</Alert>}
       {success && <Alert severity="success" sx={styles.alert}>{success}</Alert>}
       
       <Box component="form" onSubmit={handleSubmit} sx={styles.form}>
+        {/* Render text fields for each form field */}
         {['name', 'gst_number', 'email', 'phone'].map(field => (
           <TextField
             key={field}
-            label={field.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+            label={field.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} // Format label
             name={field}
             value={form[field]}
             onChange={handleChange}
@@ -144,6 +157,7 @@ function AddSupplier() {
           />
         ))}
         
+        {/* Address field (multiline) */}
         <TextField
           label="Address"
           name="address"
@@ -159,6 +173,7 @@ function AddSupplier() {
           helperText={errors.address}
         />
         
+        {/* Submit button */}
         <Button
           type="submit"
           variant="contained"
@@ -171,6 +186,7 @@ function AddSupplier() {
         </Button>
       </Box>
 
+      {/* Snackbar for session/authentication errors */}
       <Snackbar
         open={authError}
         autoHideDuration={6000}
@@ -181,6 +197,7 @@ function AddSupplier() {
   );
 }
 
+// Inline styles for the component using MUI's sx prop
 const styles = {
   container: {
     maxWidth: '800px',

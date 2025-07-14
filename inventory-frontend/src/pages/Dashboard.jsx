@@ -2,26 +2,31 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
 import { 
-  Box, Typography, Button, TextField, Select, MenuItem, InputLabel, FormControl, 
-  Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, 
-  IconButton, Tooltip, Alert, LinearProgress, Card, CardContent, Tabs, Tab,
-  Checkbox
+  Box, Typography, Button, TextField, Select, MenuItem, InputLabel, 
+  FormControl, Paper, Table, TableBody, TableCell, TableContainer, 
+  TableHead, TableRow, IconButton, Tooltip, Alert, LinearProgress, 
+  Card, CardContent, Tabs, Tab, Checkbox, Chip, Dialog, 
+  DialogTitle, DialogContent, DialogActions, DialogContentText
 } from '@mui/material';
 import { 
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, 
   FileDownload as FileDownloadIcon, Logout as LogoutIcon,
   LocalPharmacy as PharmacyIcon, Warning as WarningIcon,
-  People as PeopleIcon, Inventory as InventoryIcon
+  People as PeopleIcon, Inventory as InventoryIcon, 
+  ShoppingCart as OrderIcon, CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
 
 function Dashboard() {
   const [items, setItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [filteredOrders, setFilteredOrders] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [searchProduct, setSearchProduct] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
   const [isAdmin, setIsAdmin] = useState(false);
   const [formData, setFormData] = useState({
     name: "", sku: "", quantity: "", price: "",
@@ -32,25 +37,30 @@ function Dashboard() {
   const [error, setError] = useState("");
   const [isOrderMode, setIsOrderMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const [newStatus, setNewStatus] = useState("");
   const navigate = useNavigate();
 
-  const tabLabels = ["Dashboard", "Inventory", "Add Product", "Suppliers", "Low Stock"];
+  const tabLabels = ["Dashboard", "Inventory", "Add Product", "Suppliers", "Low Stock", "Orders"];
 
-  // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [userRes, inventoryRes, supplierRes] = await Promise.all([
+        const [userRes, inventoryRes, supplierRes, ordersRes] = await Promise.all([
           API.get("/me/"),
           API.get("/inventory/"),
-          API.get("/suppliers/")
+          API.get("/suppliers/"),
+          API.get("/orders/")
         ]);
         
         setIsAdmin(userRes.data.is_staff);
         setItems(inventoryRes.data);
         setFilteredItems(inventoryRes.data);
         setSuppliers(supplierRes.data);
+        setOrders(ordersRes.data);
+        setFilteredOrders(ordersRes.data);
       } catch (err) {
         setError("Failed to load data. Please try again.");
         if (err.response?.status === 401) {
@@ -64,7 +74,6 @@ function Dashboard() {
     fetchData();
   }, [navigate]);
 
-  // Filter inventory items
   useEffect(() => {
     let filtered = [...items];
     if (searchProduct) {
@@ -81,10 +90,16 @@ function Dashboard() {
     setFilteredItems(filtered);
   }, [searchProduct, selectedSupplier, filterDate, items]);
 
-  // Low stock items
+  useEffect(() => {
+    let filtered = [...orders];
+    if (orderStatusFilter !== "ALL") {
+      filtered = filtered.filter((o) => o.status === orderStatusFilter);
+    }
+    setFilteredOrders(filtered);
+  }, [orderStatusFilter, orders]);
+
   const lowStockItems = items.filter((item) => item.quantity < item.threshold);
 
-  // Order functionality
   const handleSelectItem = (itemId) => {
     setSelectedItems(prev => 
       prev.includes(itemId) 
@@ -102,7 +117,6 @@ function Dashboard() {
     navigate("/order", { state: { items: selectedProducts } });
   };
 
-  // Handle form submission
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -136,7 +150,6 @@ function Dashboard() {
     }
   };
 
-  // Handle edit
   const handleEdit = (item) => {
     setFormData({
       name: item.name,
@@ -151,7 +164,6 @@ function Dashboard() {
     setActiveTab(2);
   };
 
-  // Handle delete
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this item?")) return;
     try {
@@ -162,7 +174,6 @@ function Dashboard() {
     }
   };
 
-  // Handle download report
   const handleDownloadReport = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -182,12 +193,10 @@ function Dashboard() {
     }
   };
 
-  // Handle supplier edit
   const handleEditSupplier = (supplier) => {
     navigate(`/edit-supplier/${supplier.id}`);
   };
 
-  // Handle supplier delete
   const handleDeleteSupplier = async (id) => {
     if (!window.confirm("Are you sure you want to delete this supplier?")) return;
     try {
@@ -198,15 +207,53 @@ function Dashboard() {
     }
   };
 
-  // Calculate stats
+  const handleUpdateStatus = async () => {
+    if (!selectedOrder || !newStatus) return;
+    
+    try {
+      await API.post(`/orders/${selectedOrder.id}/update-status/`, { 
+        status: newStatus 
+      });
+      const res = await API.get("/orders/");
+      setOrders(res.data);
+      setShowStatusDialog(false);
+      setSelectedOrder(null);
+      setNewStatus("");
+    } catch (err) {
+      setError("Failed to update order status.");
+      console.error(err);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'DELIVERED': return 'success';
+      case 'SHIPPED': return 'primary';
+      case 'PROCESSING': return 'info';
+      case 'PENDING': return 'warning';
+      case 'CANCELLED': return 'error';
+      default: return 'default';
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    const value = typeof amount === 'number' ? amount : parseFloat(amount || 0);
+    return `₹${value.toFixed(2)}`;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString();
+  };
+
   const totalStock = filteredItems.length;
   const totalQuantity = filteredItems.reduce((sum, i) => sum + i.quantity, 0);
   const totalValue = filteredItems.reduce((sum, i) => sum + (i.quantity * i.price), 0);
   const lowStockCount = lowStockItems.length;
+  const pendingOrders = orders.filter(o => o.status === 'PENDING').length;
 
   return (
     <Box sx={styles.container}>
-      {/* App Bar */}
       <Paper elevation={3} sx={styles.appBar}>
         <Box sx={styles.appBarContent}>
           <Box sx={styles.brand}>
@@ -250,6 +297,16 @@ function Dashboard() {
             >
               Low Stock ({lowStockCount})
             </Button>
+
+            <Button 
+              variant="contained" 
+              color="info"
+              startIcon={<OrderIcon />}
+              onClick={() => setActiveTab(5)}
+              sx={styles.actionButton}
+            >
+              Orders {pendingOrders > 0 && `(${pendingOrders} Pending)`}
+            </Button>
             
             <Tooltip title="Logout">
               <IconButton 
@@ -266,7 +323,6 @@ function Dashboard() {
         </Box>
       </Paper>
 
-      {/* Tabs */}
       <Box sx={styles.tabsContainer}>
         <Tabs 
           value={activeTab} 
@@ -281,29 +337,25 @@ function Dashboard() {
               icon={index === 0 ? <PharmacyIcon /> : 
                    index === 1 ? <InventoryIcon /> : 
                    index === 4 ? <WarningIcon /> : 
-                   index === 3 ? <PeopleIcon /> : <AddIcon />}
+                   index === 3 ? <PeopleIcon /> : 
+                   index === 5 ? <OrderIcon /> : <AddIcon />}
               iconPosition="start"
             />
           ))}
         </Tabs>
       </Box>
 
-      {/* Loading Indicator */}
       {loading && <LinearProgress />}
 
-      {/* Error Message */}
       {error && (
         <Alert severity="error" onClose={() => setError("")} sx={styles.alert}>
           {error}
         </Alert>
       )}
 
-      {/* Main Content */}
       <Box sx={styles.content}>
-        {/* Dashboard Tab */}
         {activeTab === 0 && (
           <Box sx={styles.dashboardTab}>
-            {/* Stats Cards */}
             <Box sx={styles.statsContainer}>
               <Card sx={styles.statCard}>
                 <CardContent>
@@ -330,7 +382,7 @@ function Dashboard() {
               <Card sx={styles.statCard}>
                 <CardContent>
                   <Typography variant="h5" color="primary">
-                    ₹{totalValue.toLocaleString()}
+                    {formatCurrency(totalValue)}
                   </Typography>
                   <Typography variant="body2">
                     Total Value
@@ -348,9 +400,19 @@ function Dashboard() {
                   </Typography>
                 </CardContent>
               </Card>
+
+              <Card sx={{ ...styles.statCard, backgroundColor: '#e8f5e9' }}>
+                <CardContent>
+                  <Typography variant="h5" color="success.main">
+                    {pendingOrders}
+                  </Typography>
+                  <Typography variant="body2">
+                    Pending Orders
+                  </Typography>
+                </CardContent>
+              </Card>
             </Box>
 
-            {/* Recent Items */}
             <TableContainer component={Paper} sx={styles.tableContainer}>
               <Table>
                 <TableHead>
@@ -387,7 +449,7 @@ function Dashboard() {
                           {item.quantity}
                         </Box>
                       </TableCell>
-                      <TableCell>₹{item.price}</TableCell>
+                      <TableCell>{formatCurrency(item.price)}</TableCell>
                       <TableCell>{item.supplier_name || "—"}</TableCell>
                       {isAdmin && <TableCell>{item.user || "—"}</TableCell>}
                       <TableCell>
@@ -410,10 +472,8 @@ function Dashboard() {
           </Box>
         )}
 
-        {/* Inventory Tab */}
         {activeTab === 1 && (
           <Box>
-            {/* Filters */}
             <Paper elevation={2} sx={styles.filterContainer}>
               <Box sx={styles.filterRow}>
                 <TextField
@@ -486,7 +546,6 @@ function Dashboard() {
               </Box>
             </Paper>
 
-            {/* Inventory Table */}
             <TableContainer component={Paper} sx={styles.tableContainer}>
               <Table>
                 <TableHead>
@@ -524,7 +583,7 @@ function Dashboard() {
                           {item.quantity}
                         </Box>
                       </TableCell>
-                      <TableCell>₹{item.price}</TableCell>
+                      <TableCell>{formatCurrency(item.price)}</TableCell>
                       <TableCell>{item.supplier_name || "—"}</TableCell>
                       <TableCell>{item.expiration_date || "—"}</TableCell>
                       {isAdmin && <TableCell>{item.user || "—"}</TableCell>}
@@ -548,7 +607,6 @@ function Dashboard() {
           </Box>
         )}
 
-        {/* Add Product Tab */}
         {activeTab === 2 && (
           <Paper elevation={3} sx={styles.formContainer}>
             <Typography variant="h5" sx={styles.formTitle}>
@@ -670,7 +728,6 @@ function Dashboard() {
           </Paper>
         )}
 
-        {/* Suppliers Tab */}
         {activeTab === 3 && (
           <Box>
             <TableContainer component={Paper} sx={styles.tableContainer}>
@@ -690,7 +747,7 @@ function Dashboard() {
                     <TableRow key={s.id}>
                       <TableCell>{s.name}</TableCell>
                       <TableCell>{s.gst_number || "—"}</TableCell>
-                      <TableCell>{s.mobile || "—"}</TableCell>
+                      <TableCell>{s.phone || "—"}</TableCell>
                       <TableCell>{s.email || "—"}</TableCell>
                       <TableCell>{s.address || "—"}</TableCell>
                       {isAdmin && (
@@ -715,7 +772,6 @@ function Dashboard() {
           </Box>
         )}
 
-        {/* Low Stock Tab */}
         {activeTab === 4 && (
           <Box>
             <Typography
@@ -730,7 +786,6 @@ function Dashboard() {
             >
               Low Stock Products ({lowStockCount})
             </Typography>
-
             
             <TableContainer component={Paper} sx={styles.tableContainer}>
               <Table>
@@ -762,7 +817,7 @@ function Dashboard() {
                         {item.quantity}
                       </TableCell>
                       <TableCell>{item.threshold}</TableCell>
-                      <TableCell>₹{item.price}</TableCell>
+                      <TableCell>{formatCurrency(item.price)}</TableCell>
                       <TableCell>{item.supplier_name || "—"}</TableCell>
                       <TableCell>
                         <Tooltip title="Edit">
@@ -783,7 +838,143 @@ function Dashboard() {
             </TableContainer>
           </Box>
         )}
+
+        {activeTab === 5 && (
+          <Box>
+            <Typography variant="h5" sx={{ mb: 3 }}>
+              Order Management
+            </Typography>
+            
+            <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={orderStatusFilter}
+                  onChange={(e) => setOrderStatusFilter(e.target.value)}
+                  label="Status"
+                >
+                  <MenuItem value="ALL">All Orders</MenuItem>
+                  <MenuItem value="PENDING">Pending</MenuItem>
+                  <MenuItem value="PROCESSING">Processing</MenuItem>
+                  <MenuItem value="SHIPPED">Shipped</MenuItem>
+                  <MenuItem value="DELIVERED">Delivered</MenuItem>
+                  <MenuItem value="CANCELLED">Cancelled</MenuItem>
+                </Select>
+              </FormControl>
+              
+              {isAdmin && (
+                <Button 
+                  variant="contained" 
+                  onClick={() => {
+                    if (selectedOrder) {
+                      setShowStatusDialog(true);
+                    } else {
+                      setError("Please select an order to update status");
+                    }
+                  }}
+                  disabled={!selectedOrder}
+                >
+                  Update Status
+                </Button>
+              )}
+            </Box>
+
+            <TableContainer component={Paper} sx={styles.tableContainer}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    {isAdmin && <TableCell>Select</TableCell>}
+                    <TableCell>Order ID</TableCell>
+                    <TableCell>Customer</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Items</TableCell>
+                    <TableCell>Total</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredOrders.map((order) => (
+                    <TableRow 
+                      key={order.id} 
+                      sx={{ 
+                        '&:hover': { backgroundColor: '#f5f5f5' },
+                        backgroundColor: selectedOrder?.id === order.id ? '#e3f2fd' : 'inherit'
+                      }}
+                      onClick={() => setSelectedOrder(order)}
+                    >
+                      {isAdmin && (
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedOrder?.id === order.id}
+                            onChange={() => setSelectedOrder(order)}
+                            color="primary"
+                          />
+                        </TableCell>
+                      )}
+                      <TableCell>#{order.id}</TableCell>
+                      <TableCell>{order.user}</TableCell>
+                      <TableCell>{formatDate(order.created_at)}</TableCell>
+                      <TableCell>{order.items.length}</TableCell>
+                      <TableCell>{formatCurrency(order.total_amount)}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={order.status} 
+                          color={getStatusColor(order.status)}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => navigate('/order-success', { state: { order } })}
+                        >
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
       </Box>
+
+      {/* Status Update Dialog */}
+      <Dialog open={showStatusDialog} onClose={() => setShowStatusDialog(false)}>
+        <DialogTitle>Update Order Status</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Update status for Order #{selectedOrder?.id}
+          </DialogContentText>
+          <FormControl fullWidth>
+            <InputLabel>New Status</InputLabel>
+            <Select
+              value={newStatus}
+              onChange={(e) => setNewStatus(e.target.value)}
+              label="New Status"
+            >
+              <MenuItem value="PENDING">Pending</MenuItem>
+              <MenuItem value="PROCESSING">Processing</MenuItem>
+              <MenuItem value="SHIPPED">Shipped</MenuItem>
+              <MenuItem value="DELIVERED">Delivered</MenuItem>
+              <MenuItem value="CANCELLED">Cancelled</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowStatusDialog(false)}>Cancel</Button>
+          <Button 
+            onClick={handleUpdateStatus}
+            disabled={!newStatus}
+            variant="contained"
+          >
+            Update
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -839,11 +1030,11 @@ const styles = {
   },
   content: {
     flex: 1,
-    padding: '24px 16px', // Added equal horizontal padding
+    padding: '24px 16px',
     maxWidth: '1400px',
     margin: '0 auto',
     width: '100%',
-    boxSizing: 'border-box' // Added for proper width calculations
+    boxSizing: 'border-box'
   },
   dashboardTab: {
     display: 'flex',
@@ -874,7 +1065,6 @@ const styles = {
   filterContainer: {
     padding: '16px',
     marginBottom: '16px',
-    // Removed the right margin
   },
   filterRow: {
     display: 'flex',
@@ -890,9 +1080,9 @@ const styles = {
     height: '40px'
   },
   tableContainer: {
-    margin: '16px 0', // Equal top/bottom margin
+    margin: '16px 0',
     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-    width: '100%' // Ensure full width within container
+    width: '100%'
   },
   formContainer: {
     padding: '24px',

@@ -7,39 +7,45 @@ import {
 } from '@mui/material';
 import { Check as CheckIcon, ArrowBack as BackIcon } from '@mui/icons-material';
 
+// OrderConfirmation component handles the final step of placing an order
 function OrderConfirmation({ selectedItems, items, onBack }) {
-  const [address, setAddress] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [address, setAddress] = useState("");     // State for delivery address input
+  const [error, setError] = useState("");         // State for error messages
+  const [loading, setLoading] = useState(false);  // Loading state for order submission
+  const navigate = useNavigate();                 // React Router navigation hook
 
+  // Filter the items to only those selected for the order
   const orderedItems = items.filter(item => selectedItems.includes(item.id));
+  // Calculate the total order amount
   const totalAmount = orderedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
+  // Handle order placement logic
   const handlePlaceOrder = async () => {
     if (!address.trim()) {
-      setError("Please enter delivery address");
+      setError("Please enter delivery address"); // Validate address
       return;
     }
 
     setLoading(true);
     try {
+      // Send order data to backend API
       await API.post("/orders/", {
         items: selectedItems,
         delivery_address: address,
         total_amount: totalAmount
       });
-      navigate("/orders-success");
+      navigate("/orders-success"); // Redirect to success page on success
     } catch (err) {
-      setError("Failed to place order. Please try again.");
+      setError("Failed to place order. Please try again."); // Show error if request fails
     } finally {
-      setLoading(false);
+      setLoading(false); // Reset loading state
     }
   };
 
   return (
     <Box sx={styles.container}>
       <Paper elevation={3} sx={styles.paper}>
+        {/* Back button to return to inventory */}
         <Button
           startIcon={<BackIcon />}
           onClick={onBack}
@@ -48,16 +54,19 @@ function OrderConfirmation({ selectedItems, items, onBack }) {
           Back to Inventory
         </Button>
 
+        {/* Page title */}
         <Typography variant="h5" sx={styles.title}>
           Confirm Your Order
         </Typography>
 
+        {/* Error alert if any */}
         {error && (
           <Alert severity="error" sx={styles.alert}>
             {error}
           </Alert>
         )}
 
+        {/* Table of ordered items */}
         <TableContainer component={Paper} sx={styles.tableContainer}>
           <Table>
             <TableHead>
@@ -81,10 +90,12 @@ function OrderConfirmation({ selectedItems, items, onBack }) {
           </Table>
         </TableContainer>
 
+        {/* Total order amount */}
         <Typography variant="h6" sx={styles.total}>
           Total Amount: ₹{totalAmount.toFixed(2)}
         </Typography>
 
+        {/* Delivery address input field */}
         <TextField
           label="Delivery Address"
           multiline
@@ -96,6 +107,7 @@ function OrderConfirmation({ selectedItems, items, onBack }) {
           required
         />
 
+        {/* Place order button */}
         <Button
           variant="contained"
           color="primary"
@@ -112,6 +124,7 @@ function OrderConfirmation({ selectedItems, items, onBack }) {
   );
 }
 
+// Inline styles for the component
 const styles = {
   container: {
     display: 'flex',
