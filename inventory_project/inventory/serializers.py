@@ -37,7 +37,6 @@ class InventorySerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
 
     class Meta:
         model = InventoryItem
@@ -70,8 +69,6 @@ class InventorySerializer(serializers.ModelSerializer):
         return value
 
 class DiscountSerializer(serializers.ModelSerializer):
-    value = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
-    
     class Meta:
         model = Discount
         fields = ['id', 'discount_type', 'value', 'description']
@@ -80,7 +77,6 @@ class DiscountSerializer(serializers.ModelSerializer):
 class OrderItemSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.name', read_only=True)
     item_sku = serializers.CharField(source='item.sku', read_only=True)
-    price_at_order = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
 
     class Meta:
         model = OrderItem
@@ -92,8 +88,6 @@ class OrderSerializer(serializers.ModelSerializer):
     user = serializers.CharField(source='user.username', read_only=True)
     discounts = DiscountSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
-    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
 
     class Meta:
         model = Order
@@ -109,7 +103,7 @@ class OrderSerializer(serializers.ModelSerializer):
         discounts_data = self.context.get('discounts', [])
         
         subtotal = sum(
-            float(InventoryItem.objects.get(id=item['id']).price) * item['quantity']
+            InventoryItem.objects.get(id=item['id']).price * item['quantity']
             for item in items_data
         )
         

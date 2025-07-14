@@ -113,7 +113,7 @@ class Order(models.Model):
 
     def calculate_subtotal(self):
         return sum(
-            float(item.price_at_order) * item.quantity
+            item.price_at_order * item.quantity
             for item in self.order_items.all()
         )
 
@@ -122,16 +122,13 @@ class Order(models.Model):
         total = float(self.subtotal)
         
         for discount_data in discounts_data:
-            discount_value = float(discount_data['value'])
             if discount_data['type'].upper() == 'PERCENTAGE':
-                total -= total * (discount_value / 100)
+                total -= total * (float(discount_data['value']) / 100)
             else:
-                total -= discount_value
+                total -= float(discount_data['value'])
         
         self.total_amount = max(0, total)
         self.save()
-        
-        self.discounts.all().delete()
         
         for discount_data in discounts_data:
             Discount.objects.create(

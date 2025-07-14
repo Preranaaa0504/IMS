@@ -220,6 +220,6 @@ def update_order_status(request, pk):
     order.save()
     
     return Response(
-        OrderSerializer(order).data,
+        {'message': f'Order status updated to {new_status}'},
         status=status.HTTP_200_OK
     )

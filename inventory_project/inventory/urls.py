@@ -7,17 +7,21 @@ from .views import (
     order_history, update_order_status
 )
 
+# Create a router and register our viewsets with it.
 router = DefaultRouter()
-router.register(r'inventory', InventoryViewSet, basename='inventory')
-router.register(r'suppliers', SupplierViewSet, basename='suppliers')
-router.register(r'orders', OrderViewSet, basename='orders')
+router.register(r'inventory', InventoryViewSet, basename='inventory')   # CRUD endpoints for inventory items
+router.register(r'suppliers', SupplierViewSet, basename='suppliers')   # CRUD endpoints for suppliers
+router.register(r'orders', OrderViewSet, basename='orders')            # CRUD endpoints for orders
 
+# Define the URL patterns for the API.
 urlpatterns = [
-    path('', include(router.urls)),
-    path('inventory-report/', export_inventory_csv, name='inventory_csv'),
-    path('low-stock/', low_stock_items, name='low_stock'),
-    path('register/', register_user, name='register_user'),
-    path('me/', get_current_user_info, name='current_user'),
-    path('orders/history/', order_history, name='order_history'),
-    path('orders/<int:pk>/update-status/', update_order_status, name='update_order_status'),
+    path('', include(router.urls)),  # Include all router-generated endpoints
+
+    # Custom endpoints not covered by the router:
+    path('inventory-report/', export_inventory_csv, name='inventory_csv'),  # Export inventory as CSV
+    path('low-stock/', low_stock_items, name='low_stock'),                 # Get low-stock inventory items
+    path('register/', register_user, name='register_user'),                # User registration endpoint
+    path('me/', get_current_user_info, name='current_user'),               # Get current logged-in user's info
+    path('orders/history/', order_history, name='order_history'),          # Get order history for user
+    path('orders/<int:pk>/update-status/', update_order_status, name='update_order_status'),  # Admin: update order status
 ]
